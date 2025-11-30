@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memoria RAG - Document Memory Model</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;600;700&display=swap');
+body { font-family: Inter, sans-serif;background:#f3f4f6; }
+#chatHistory::-webkit-scrollbar{width:8px;}
+#chatHistory::-webkit-scrollbar-thumb{background:#9ca3af;border-radius:4px;}
+#chatHistory::-webkit-scrollbar-track{background:#e5e7eb;}
+</style>
+
+<script>
+tailwind.config = {
+    theme:{extend:{colors:{
+        "brand-dark":"#1f2937","brand-light":"#f9fafb",
+        "accent":"#a855f7","user-bubble":"#f5f3ff","ai-bubble":"#ffffff",
+    }}}
+}
+</script>
+</head>
+
+<body class="min-h-screen flex items-center justify-center p-5">
+
+<div class="w-full max-w-4xl bg-white shadow-2xl rounded-2xl overflow-hidden flex flex-col min-h-[90vh]">
+
+    <!-- HEADER -->
+    <header class="p-4 bg-brand-dark text-white flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <h1 class="text-3xl font-extrabold text-accent">MEMORIA</h1>
+            <span class="opacity-75 text-sm">RAG Document Memory</span>
+        </div>
+
+        <div class="flex items-center space-x-3 text-sm">
+            <label class="cursor-pointer hover:text-accent">
+                <input type="file" id="pdfFile" accept="application/pdf" class="hidden">
+                📄 <span id="fileNameDisplay">Select PDF</span>
+            </label>
+
+            <button onclick="processAndEmbedPDF()" id="uploadButton"
+                class="bg-accent px-4 py-1.5 rounded-lg font-semibold disabled:opacity-40">
+                <span id="uploadButtonText">Process</span>
+                <svg id="spinner" class="animate-spin h-4 w-4 ml-2 hidden" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" stroke-width="4" stroke="white" opacity="0.4"/>
+                    <path fill="white" opacity="0.9"
+                          d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 100 16z"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- STATUS AREA -->
+    <div id="uploadStatus" class="p-3 text-gray-700 border-b bg-gray-50 text-sm">Waiting for PDF...</div>
+
+    <!-- CHAT WINDOW -->
+    <div id="chatHistory" class="flex-grow p-5 space-y-5 overflow-y-auto">
+
+        <div class="flex justify-start">
+            <div class="p-4 bg-ai-bubble border rounded-xl">
+                <b class="text-accent">Memoria:</b> Upload a PDF to start chatting with its knowledge.
+            </div>
+        </div>
+
+    </div>
+
+    <!-- INPUT BAR -->
+    <div class="p-4 border-t bg-white">
+        <div class="flex gap-2">
+            <input id="chatInput" class="flex-grow border p-3 rounded-lg"
+                placeholder="Ask a question from PDF..."
+                onkeydown="if(event.key==='Enter')sendChatMessage()">
+
+            <button onclick="sendChatMessage()" id="sendButton"
+                class="bg-accent text-white px-6 rounded-lg font-semibold shadow">
+                Ask
+            </button>
+        </div>
+
+        <div id="loadingIndicator" class="text-accent mt-2 text-sm hidden">
+            Retrieving answer...
+        </div>
+    </div>
+</div>
+
+<script>
+const sessionId = localStorage.getItem("chatSessionId") || crypto.randomUUID();
+localStorage.setItem("chatSessionId", sessionId);
+
+const pdfFile=document.getElementById("pdfFile");
+const chatHistory=document.getElementById("chatHistory");
+const fileNameDisplay = document.getElementById("fileNameDisplay");
+const uploadButton = document.getElementById("uploadButton");
+const uploadButtonText = document.getElementById("uploadButtonText");
+const spinner = document.getElementById("spinner");
+const loadingIndicator = document.getElementById("loadingIndicator");
+const chatInput = document.getElementById("chatInput");
+
+pdfFile.onchange=()=>{
+    fileNameDisplay.textContent = pdfFile.files?.length ? pdfFile.files[0].name : "Select PDF";
+    uploadButton.disabled = !pdfFile.files.length;
+};
+
+function appendMessage(role,text,sources=""){
+    const bubble=document.createElement("div");
+    bubble.className="flex "+(role==="user"?"justify-end":"justify-start");
+    bubble.innerHTML=`
+        <div class="max-w-lg p-4 rounded-xl shadow ${role==='user'?'bg-user-bubble':'bg-ai-bubble'}">
+            ${role==='bot'? "<b class='text-accent'>Memoria:</b>": ""} ${text}
+            ${sources? `<div class="mt-2 text-xs text-gray-600">${sources}</div>` : ""}
+        </div>`;
+    chatHistory.appendChild(bubble);
+    chatHistory.scrollTop=chatHistory.scrollHeight;
+}
+
+async function sendChatMessage(){
+    const query=chatInput.value.trim();
+    if(!query) return;
+
+    appendMessage("user",query);
+    loadingIndicator.classList.remove("hidden");
+    sendButton.disabled=true;
+
+    const res=await fetch("/chat",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({query})
+    });
+
+    const r=await res.json();
+    appendMessage("bot",r.answer||"No answer",r.sources||"");
+    chatInput.value="";
+    loadingIndicator.classList.add("hidden");
+    sendButton.disabled=false;
+}
+
+async function processAndEmbedPDF(){
+    const file = pdfFile.files[0];
+    if(!file) return;
+
+    spinner.classList.remove("hidden");
+    uploadButtonText.textContent="Processing...";
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch("/process_pdf", { method:"POST", body:formData });
+    const r = await res.json();
+    if(r.status==="success"){
+        uploadStatus.innerHTML=`📁 PDF processed! ${r.chunks_stored} chunks embedded.`;
+    } else {
+        uploadStatus.innerHTML=`❌ Error: ${r.msg || "Unknown error"}`;
+    }
+
+    spinner.classList.add("hidden");
+    uploadButtonText.textContent="Process";
+}
+
+</script>
+
+</body>
+</html>

@@ -1,0 +1,22 @@
+# Flask backend
+flask==2.3.3
+flask-cors==3.0.10
+python-dotenv==1.0.1
+
+# PDF processing
+PyMuPDF==1.22.5
+
+# Embeddings and NLP
+sentence-transformers==2.2.2
+torch==2.3.1
+
+# Qdrant in-memory/vector DB
+qdrant-client==1.11.0
+
+# Google GenAI embeddings (Gemini)
+google-genai==0.6.0
+
+# Data validation / utils
+pydantic==2.6.0
+typing-extensions==4.8.0
+
